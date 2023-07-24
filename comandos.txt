@@ -1,8 +1,0 @@
-python3 -m notebook -ip cm4
-
-kafka-topics.sh --create --topic student-a180113666-saida --bootstrap-server cm4:9092
-
-kafka-console-consumer.sh -topic student-a180113666-saida --bootstrap-server cm4:9092
-kafka-console-producer.sh -topic student-a180113666-saida --bootstrap-server cm4:9092
-
-connect-standalone.sh connect.properties elastic.properties

@@ -13,8 +13,7 @@ int connect_to_server() {
     struct sockaddr_in server_address;
     char buffer[BUFFER_SIZE] = {0};
 
-    if ((client_socket = socket(AF_INET, SOCK_STREAM, 0)) < 0)
-    {
+    if ((client_socket = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
         perror("Erro no cliente");
         exit(EXIT_FAILURE);
     }
@@ -22,14 +21,12 @@ int connect_to_server() {
     server_address.sin_family = AF_INET;
     server_address.sin_port = htons(SERVER_PORT);
 
-    if (inet_pton(AF_INET, SERVER_IP, &server_address.sin_addr) <= 0)
-    {
+    if (inet_pton(AF_INET, SERVER_IP, &server_address.sin_addr) <= 0) {
         perror("Erro no endereço");
         exit(EXIT_FAILURE);
     }
 
-    if (connect(client_socket, (struct sockaddr *)&server_address, sizeof(server_address)) < 0)
-    {
+    if (connect(client_socket, (struct sockaddr *)&server_address, sizeof(server_address)) < 0) {
         perror("Erro na conexão");
         exit(EXIT_FAILURE);
     }
@@ -45,22 +42,32 @@ void close_connection(int client_socket) {
 
 void send_numbers(int client_socket) {
     char buffer[BUFFER_SIZE] = {0};
-    while (1)
-    {
-        int num1, num2;
+    int num1, num2;
 
-        printf("Insira dois números inteiros: ");
-        scanf("%d %d", &num1, &num2);
+    while (1) {
+        printf("Insira dois números inteiros ou digite '0 0' para sair: ");
+        if (scanf("%d %d", &num1, &num2) != 2) {
+            fprintf(stderr, "Entrada inválida. Insira dois números inteiros.\n");
+            while (getchar() != '\n'); // Clear input buffer
+            continue;
+        }
+
+        if (num1 == 0 && num2 == 0) {
+            printf("Encerrando conexão.\n");
+            break;
+        }
 
         snprintf(buffer, sizeof(buffer), "%d %d", num1, num2);
-        send(client_socket, buffer, strlen(buffer), 0);
+        if (send(client_socket, buffer, strlen(buffer), 0) == -1) {
+            perror("Erro ao enviar dados para o servidor");
+            break;
+        }
 
         memset(buffer, 0, sizeof(buffer));
     }
 }
 
-int main()
-{
+int main() {
     int client_socket = connect_to_server();
     send_numbers(client_socket);
     close_connection(client_socket);

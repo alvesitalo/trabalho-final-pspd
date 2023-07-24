@@ -1,20 +1,18 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/time.h>
-#include <mpi.h>
 #include <omp.h>
+#include <mpi.h>
 
 #define ind2d(i, j) (i) * (tam + 2) + j
-#define POWMIN 3
-#define POWMAX 10
 
 double wall_time(void)
 {
-    struct timeval tv;
-    struct timezone tz;
-    gettimeofday(&tv, &tz);
-    return (tv.tv_sec + tv.tv_usec / 1000000.0);
-} /* fim-wall_time */
+  struct timeval tv;
+  struct timezone tz;
+  gettimeofday(&tv, &tz);
+  return (tv.tv_sec + tv.tv_usec / 1000000.0);
+}
 
 void UmaVida(int *tabulIn, int *tabulOut, int tam)
 {
@@ -66,27 +64,30 @@ int Correto(int *tabul, int tam)
             tabul[ind2d(tam, tam - 1)] && tabul[ind2d(tam, tam)]);
 } /* fim-Correto */
 
-int main(int argc, char** argv)
+int main(int argc, char **argv)
 {
-    int pow, i, tam, *tabulIn, *tabulOut;
-    double t0, t1, t2, t3;
-    int rank, size;
+  int pow, i, tam, *tabulIn, *tabulOut;
+  double t0, t1, t2, t3;
 
-    MPI_Init(&argc, &argv);
-    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-    MPI_Comm_size(MPI_COMM_WORLD, &size);
+  int powmin = atoi(argv[1]);
+  int powmax = atoi(argv[2]);
 
-    for (pow = POWMIN + rank; pow <= POWMAX; pow += size)
-    {
-        tam = 1 << pow;
+  MPI_Init(&argc, &argv);
+  int rank, size;
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+  MPI_Comm_size(MPI_COMM_WORLD, &size);
 
-        t0 = wall_time();
-        tabulIn = (int *)malloc((tam + 2) * (tam + 2) * sizeof(int));
-        tabulOut = (int *)malloc((tam + 2) * (tam + 2) * sizeof(int));
-        InitTabul(tabulIn, tabulOut, tam);
-        t1 = wall_time();
+  for (pow = powmin; pow <= powmax; pow++)
+  {
+    tam = 1 << pow;
 
-        for (i = 0; i < 2 * (tam - 3); i++)
+    t0 = wall_time();
+    tabulIn = (int *)malloc((tam + 2) * (tam + 2) * sizeof(int));
+    tabulOut = (int *)malloc((tam + 2) * (tam + 2) * sizeof(int));
+    InitTabul(tabulIn, tabulOut, tam);
+    t1 = wall_time();
+
+    for (i = 0; i < 2 * (tam - 3); i++)
         {
             UmaVida(tabulIn, tabulOut, tam);
             UmaVida(tabulOut, tabulIn, tam);
@@ -107,6 +108,6 @@ int main(int argc, char** argv)
         free(tabulOut);
     }
 
-    MPI_Finalize();
-    return 0;
+  MPI_Finalize();
+  return 0;
 }

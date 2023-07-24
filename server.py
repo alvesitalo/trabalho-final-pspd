@@ -17,17 +17,8 @@ class Server:
             self.server_socket.listen(5)
             print(f"Servidor rodando na porta {self.port}")
 
-            max_clients = 10
-            client_sockets = [None] * max_clients
-
             while True:
                 client_socket, address = self.server_socket.accept()
-
-                for i in range(max_clients):
-                    if client_sockets[i] is None:
-                        client_sockets[i] = client_socket
-                        break
-
                 client_handler = ClientHandler(client_socket, address)
                 client_handler.start()
 
@@ -55,10 +46,8 @@ class ClientHandler(threading.Thread):
             print(f"Cliente {self.address[0]}:{self.address[1]} enviou: powmin={powmin}, powmax={powmax}")
 
             valueArgs = {'powmin': powmin, 'powmax': powmax}
-
-            openmp_thread = threading.Thread(target=openmpi, args=(valueArgs,))
-            openmp_thread.start()
-            openmp_thread.join()
+            self.openmpi(valueArgs)
+            self.spark(valueArgs)
 
             print("\nAguardando cliente\n")
             sum_result = powmin + powmax
@@ -67,10 +56,15 @@ class ClientHandler(threading.Thread):
 
         self.client_socket.close()
 
-def openmpi(valueArgs):
-    print("Rodando com OpenMP e MPI")
-    comando = f"./openmpi {valueArgs['powmin']} {valueArgs['powmax']}"
-    subprocess.call(comando, shell=True)
+    def openmpi(self, valueArgs):
+        print("Rodando com OpenMP e MPI\n")
+        comando = f"./openmpi {valueArgs['powmin']} {valueArgs['powmax']}"
+        subprocess.call(comando, shell=True)
+
+    def spark(self, valueArgs):
+        print("Rodando com Spark\n")
+        comando = f"python3 ./jogodavida.py {valueArgs['powmin']} {valueArgs['powmax']}"
+        subprocess.call(comando, shell=True)
 
 def main():
     server = Server("0.0.0.0", 8005)

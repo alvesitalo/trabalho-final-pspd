@@ -1,69 +1,90 @@
-from pyspark.sql import SparkSession
-from pyspark.sql.functions import col, sum, when
+import time
+import sys
+from pyspark import SparkContext
 
-def init_spark():
-    return SparkSession.builder.appName("GameOfLifeSpark").getOrCreate()
+BUFFER_SIZE = 1024
 
-def UmaVidaSpark(tabul, tam):
-    # Create a DataFrame from the tabulIn array
-    spark = init_spark()
-    df = spark.createDataFrame(tabul, schema=["cell"])
+def ind2d(i, j, tam):
+    return i * (tam + 2) + j
 
-    # Calculate the neighbors' sum for each cell
-    df = df.withColumn("i", (col("cell") - 1) // tam + 1)
-    df = df.withColumn("j", (col("cell") - 1) % tam + 1)
+def uma_vida(args):
+    (tabul_in, tabul_out, tam, i) = args
+    for j in range(1, tam + 1):
+        vizviv = (tabul_in[ind2d(i - 1, j - 1, tam)] + tabul_in[ind2d(i - 1, j, tam)] +
+                  tabul_in[ind2d(i - 1, j + 1, tam)] + tabul_in[ind2d(i, j - 1, tam)] +
+                  tabul_in[ind2d(i, j + 1, tam)] + tabul_in[ind2d(i + 1, j - 1, tam)] +
+                  tabul_in[ind2d(i + 1, j, tam)] + tabul_in[ind2d(i + 1, j + 1, tam)])
 
-    neighbor_indices = [(-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 1), (1, -1), (1, 0), (1, 1)]
+        if tabul_in[ind2d(i, j, tam)] and vizviv < 2:
+            tabul_out[ind2d(i, j, tam)] = 0
+        elif tabul_in[ind2d(i, j, tam)] and vizviv > 3:
+            tabul_out[ind2d(i, j, tam)] = 0
+        elif not tabul_in[ind2d(i, j, tam)] and vizviv == 3:
+            tabul_out[ind2d(i, j, tam)] = 1
+        else:
+            tabul_out[ind2d(i, j, tam)] = tabul_in[ind2d(i, j, tam)]
 
-    for di, dj in neighborindices:
-        df = df.withColumn(f"neighbor{di}{dj}", col("cell") + di * tam + dj)
+def init_tabul(tam):
+    tabul_in = [0] * (tam + 2) * (tam + 2)
+    tabul_out = [0] * (tam + 2) * (tam + 2)
+    tabul_in[ind2d(1, 2, tam)] = 1
+    tabul_in[ind2d(2, 3, tam)] = 1
+    tabul_in[ind2d(3, 1, tam)] = 1
+    tabul_in[ind2d(3, 2, tam)] = 1
+    tabul_in[ind2d(3, 3, tam)] = 1
+    return tabul_in, tabul_out
 
-    df = df.withColumn("vizviv", sum(when(col(f"neighbor{di}_{dj}") > 0, 1).otherwise(0) for di, dj in neighbor_indices))
-
-    # Apply the Game of Life rules using DataFrame operations
-    df = df.withColumn(
-        "tabulOut",
-        when((col("cell") == 1) & (col("vizviv") < 2), 0)
-        .when((col("cell") == 1) & (col("vizviv") > 3), 0)
-        .when((col("cell") == 0) & (col("vizviv") == 3), 1)
-        .otherwise(col("cell"))
-    )
-
-    # Convert the DataFrame back to a tabulOut array
-    tabulOut = df.select("tabulOut").rdd.flatMap(lambda x: x).collect()
-    return tabulOut
+def correto(tabul, tam):
+    cnt = sum(tabul)
+    return cnt == 5 and tabul[ind2d(tam - 2, tam - 1, tam)] and \
+           tabul[ind2d(tam - 1, tam, tam)] and \
+           tabul[ind2d(tam, tam - 2, tam)] and \
+           tabul[ind2d(tam, tam - 1, tam)] and \
+           tabul[ind2d(tam, tam, tam)]
 
 def main():
-    POWMIN = 3
-    POWMAX = 10
+    sc = SparkContext(appName="GameOfLife")
+    if len(sys.argv) < 3:
+        print("Falha nos argumentos")
+        sys.exit(1)
+        
+    powmin = int(sys.argv[1])
+    powmax = int(sys.argv[2])
+    print(f"\nValores recebidos no Spark: {powmin} e {powmax}\n")
 
-    for pow in range(POWMIN, POWMAX + 1):
+    for pow in range(powmin, powmax + 1):
         tam = 1 << pow
 
-        # Allocate and initialize tabulIn and tabulOut arrays
-        tabulIn = [0] * ((tam + 2) * (tam + 2))
-        tabulOut = [0] * ((tam + 2) * (tam + 2))
-        tabulIn[ind2d(1, 2)] = 1
-        tabulIn[ind2d(2, 3)] = 1
-        tabulIn[ind2d(3, 1)] = 1
-        tabulIn[ind2d(3, 2)] = 1
-        tabulIn[ind2d(3, 3)] = 1
+        t0 = time.time()
+        tabul_in, tabul_out = init_tabul(tam)
+        t1 = time.time()
 
-        t0 = wall_time()
-        for i in range(2 * (tam - 3)):
-            tabulOut = UmaVidaSpark(tabulIn, tam)
-            tabulIn = UmaVidaSpark(tabulOut, tam)
-        t1 = wall_time()
+        iterations = 2 * (tam - 3)
+        for _ in range(iterations):
+            broadcasted_tabul_in = sc.broadcast(tabul_in)
+            rdd = sc.parallelize(range(1, tam + 1))
+            rdd.foreach(lambda i: uma_vida((broadcasted_tabul_in.value, tabul_out, tam, i)))
+            tabul_in, tabul_out = tabul_out, tabul_in
 
-        if Correto(tabulIn, tam):
-            print("Ok, RESULTADO CORRETO")
-        else:
-            print("Nok, RESULTADO ERRADO")
-        t2 = wall_time()
+        t2 = time.time()
 
-        print(
-            f"tam={tam}; tempos: init={t1-t0:.7f}, comp={t2-t1:.7f}, fim={t2-t0:.7f}, tot={t2-t0:.7f}"
-        )
+        is_correct = correto(tabul_in, tam)
+        global_is_correct = sc.parallelize([is_correct]).reduce(lambda x, y: x and y)
 
-if name == "main":
+        if sc.getConf().get('spark.driver.host') == 'localhost':
+            if global_is_correct:
+                print("**Ok, RESULTADO CORRETO**")
+            else:
+                print("**Nok, RESULTADO ERRADO**")
+
+        t3 = time.time()
+
+        print("----------------------RESULTADO---------------------------")
+        print("tam=%d; tempos: init=%7.7f, comp=%7.7f, fim=%7.7f, tot=%7.7f" %
+              (tam, t1 - t0, t2 - t1, t3 - t2, t3 - t0))
+        print("\n")
+
+    sc.stop()
+
+if __name__ == "__main__":
     main()
